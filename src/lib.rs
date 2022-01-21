@@ -1,5 +1,6 @@
 #[cfg(feature = "buddy-alloc")]
 mod alloc;
+mod raycast;
 mod wasm4;
 use wasm4::*;
 
