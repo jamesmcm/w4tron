@@ -1,4 +1,5 @@
 pub const fn sin(angle_num: usize) -> f32 {
+    // sin for 60 fov
     match angle_num {
         0 => 0.0000,
         1 => 0.0065,

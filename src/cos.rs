@@ -1,4 +1,5 @@
 pub const fn cos(angle_num: usize) -> f32 {
+    // cos for 60 fov
     match angle_num {
         0 => 1.0000,
         1 => 1.0000,

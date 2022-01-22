@@ -12,7 +12,7 @@ use crate::BOARD;
 // Walls are 4x128x4
 // Camera height =65
 // This code is FOV independent, but trig lookup tables are not!
-const FOV: usize = 60; // degrees
+const FOV: usize = 30; // degrees
 const ANGLE_DIFF_DEGREES: f32 = FOV as f32 / 160.0;
 const WALL_HEIGHT: usize = 8;
 const WALL_SIZE: usize = 4; // x,z
@@ -85,19 +85,19 @@ pub fn draw_3d(grid_origin: (usize, usize), dir: Direction) {
     // FOV independent - depends on num columns
     match dir {
         North => {
-            let angles = (160..320).rev();
+            let angles = (400..560).rev();
             draw_cols(angles, grid_origin);
         }
         South => {
-            let angles = (640..800).rev();
+            let angles = (1360..1520).rev();
             draw_cols(angles, grid_origin);
         }
         East => {
-            let angles = (0..80).rev().chain((880..960).rev());
+            let angles = (0..80).rev().chain((1840..1920).rev());
             draw_cols(angles, grid_origin);
         }
         West => {
-            let angles = (400..560).rev();
+            let angles = (880..1040).rev();
             draw_cols(angles, grid_origin);
         }
     }
