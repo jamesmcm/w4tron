@@ -1,6 +1,9 @@
 #[cfg(feature = "buddy-alloc")]
 mod alloc;
+mod cos;
 mod raycast;
+mod sin;
+mod tan;
 mod wasm4;
 use wasm4::*;
 
@@ -39,6 +42,12 @@ impl Direction {
     }
 }
 
+enum DrawMode {
+    TwoD,
+    ThreeD,
+}
+
+static mut DRAWMODE: DrawMode = DrawMode::TwoD;
 static mut WINNER: Option<u8> = None;
 static mut PREV_GAMEPAD: u8 = 0;
 static mut FRAME: u8 = 0;
@@ -46,13 +55,13 @@ static mut BOARD: [Option<u8>; 1600] = [None; 1600];
 static mut PLAYERS: [Player; 2] = [
     Player {
         index: 1,
-        direction: Direction::South,
-        position: (4, 20),
+        direction: Direction::North,
+        position: (20, 25),
     },
     Player {
         index: 2,
-        direction: Direction::North,
-        position: (34, 20),
+        direction: Direction::East,
+        position: (38, 16),
     },
 ];
 
@@ -124,6 +133,11 @@ pub fn input() {
             PLAYERS[0].direction = PLAYERS[0].direction.left_turn();
         } else if just_pressed & wasm4::BUTTON_RIGHT != 0 {
             PLAYERS[0].direction = PLAYERS[0].direction.right_turn();
+        } else if just_pressed & wasm4::BUTTON_UP != 0 {
+            DRAWMODE = match DRAWMODE {
+                DrawMode::TwoD => DrawMode::ThreeD,
+                DrawMode::ThreeD => DrawMode::TwoD,
+            };
         }
 
         PREV_GAMEPAD = gamepad;
@@ -152,7 +166,7 @@ pub fn step() {
                 WINNER = Some(2);
             }
 
-            draw_players();
+            // draw_players();
         }
     }
 }
@@ -225,8 +239,15 @@ fn update() {
             }
             return;
         };
-        draw_board();
-        draw_players();
+        match DRAWMODE {
+            DrawMode::TwoD => {
+                draw_board();
+                draw_players();
+            }
+            DrawMode::ThreeD => {
+                raycast::draw_3d(PLAYERS[0].position, PLAYERS[0].direction);
+            }
+        }
         input();
         ai();
         if FRAME == 0 {
