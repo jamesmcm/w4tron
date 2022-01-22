@@ -195,7 +195,7 @@ fn find_vertical_intersection(
         grid_origin.1 * WALL_SIZE + WALL_SIZE
     };
 
-    if angle_num == 240 || angle_num == 720 {
+    if angle_num == 480 || angle_num == 1440 {
         return None; // divergent tan
     }
 
