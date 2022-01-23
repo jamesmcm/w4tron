@@ -4,7 +4,7 @@ Small Tron-style game for [WASM4](https://wasm4.org/).
 
 ![2D example](./example2d.gif)
 
-![Raycasting example](./example_raycast.png)
+![Raycasting example](./raycasting.gif)
 
 ## Controls
 
