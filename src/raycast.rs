@@ -1,6 +1,3 @@
-use crate::cos::cos;
-use crate::sin::sin;
-use crate::tan::tan;
 use crate::wasm4::FRAMEBUFFER;
 use crate::Direction;
 use crate::BOARD;
@@ -13,7 +10,7 @@ use crate::BOARD;
 // Camera height =65
 // This code is FOV independent, but trig lookup tables are not!
 const FOV: usize = 30; // degrees
-const ANGLE_DIFF_DEGREES: f32 = FOV as f32 / 160.0;
+const ANGLE_DIFF_DEGREES: f64 = FOV as f64 / 160.0;
 const WALL_HEIGHT: usize = 8;
 const WALL_SIZE: usize = 4; // x,z
 const PROJECTION_DISTANCE: usize = 138; // Approximation of 80 half-width / tan(pi/6) i.e. 2**7
@@ -27,36 +24,36 @@ enum IntersectionKind {
 
 struct Intersection {
     kind: IntersectionKind,
-    distance: f32,
+    distance: f64,
     colour: u8,
 }
 
-fn calculate_distance(px: usize, py: usize, ax: usize, ay: usize, angle_num: usize) -> f32 {
-    // let mut dist: f32;
+fn calculate_distance(px: usize, py: usize, ax: usize, ay: usize, angle_num: usize) -> f64 {
+    // let mut dist: f64;
     // if py != ay && sin(angle_num) != 0.0 {
-    //     dist = py as f32 - ay as f32;
+    //     dist = py as f64 - ay as f64;
     //     if dist < 0.0 {
     //         dist *= -1.0;
     //     };
     //     dist /= sin(angle_num);
     // } else {
-    //     dist = px as f32 - ax as f32;
+    //     dist = px as f64 - ax as f64;
     //     if dist < 0.0 {
     //         dist *= -1.0;
     //     };
     //     dist /= cos(angle_num);
     // }
     // dist
-    ((px as f32 - ax as f32).powi(2) + (py as f32 - ay as f32).powi(2)).sqrt()
+    ((px as f64 - ax as f64).powi(2) + (py as f64 - ay as f64).powi(2)).sqrt()
 }
 
-fn draw_cols<I>(angle_nums: I, grid_origin: (usize, usize))
+fn draw_cols<I>(angle_nums: I, grid_origin: (usize, usize), dir: Direction)
 where
     I: Iterator<Item = usize>,
 {
     for (col, angle_num) in angle_nums.enumerate() {
-        let intersection = find_intersection(grid_origin, angle_num);
-        let height = (SLICE_HEIGHT_CONST as f32 / intersection.distance).floor() as usize;
+        let intersection = find_intersection(grid_origin, angle_num, dir);
+        let height = (SLICE_HEIGHT_CONST as f64 / intersection.distance).floor() as usize;
         for row in 0..160 {
             let byte: usize = (40 * row) + (col / 4);
             let bit: u8 = col as u8 % 4;
@@ -85,31 +82,47 @@ pub fn draw_3d(grid_origin: (usize, usize), dir: Direction) {
     // FOV independent - depends on num columns
     match dir {
         North => {
-            let angles = (400..560).rev();
-            draw_cols(angles, grid_origin);
+            let angles = (((90 - FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize
+                ..((90 + FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize)
+                .rev();
+            draw_cols(angles, grid_origin, dir);
         }
         South => {
-            let angles = (1360..1520).rev();
-            draw_cols(angles, grid_origin);
+            let angles = (((270 - FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize
+                ..((270 + FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize)
+                .rev();
+            draw_cols(angles, grid_origin, dir);
         }
         East => {
-            let angles = (0..80).rev().chain((1840..1920).rev());
-            draw_cols(angles, grid_origin);
+            let angles = (0..((FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize)
+                .rev()
+                .chain(
+                    (((360 - (FOV / 2)) as f64 / ANGLE_DIFF_DEGREES) as usize
+                        ..(360.0 / ANGLE_DIFF_DEGREES) as usize)
+                        .rev(),
+                );
+            draw_cols(angles, grid_origin, dir);
         }
         West => {
-            let angles = (880..1040).rev();
-            draw_cols(angles, grid_origin);
+            let angles = (((180 - FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize
+                ..((180 + FOV / 2) as f64 / ANGLE_DIFF_DEGREES) as usize)
+                .rev();
+            draw_cols(angles, grid_origin, dir);
         }
     }
 }
 
-fn find_intersection(grid_origin: (usize, usize), angle_num: usize) -> Intersection {
+fn find_intersection(
+    grid_origin: (usize, usize),
+    angle_num: usize,
+    dir: Direction,
+) -> Intersection {
     // e.g. for North heading will check all angle_nums in range:
     // 90-(FOV/2) -> 90+(FOV/2)
     // angle can be any multiple of FOV/160
     // angle_num between 0 and 959
-    let h = find_horizontal_intersection(grid_origin, angle_num);
-    let v = find_vertical_intersection(grid_origin, angle_num);
+    let h = find_horizontal_intersection(grid_origin, angle_num, dir);
+    let v = find_vertical_intersection(grid_origin, angle_num, dir);
 
     match (h, v) {
         (None, None) => unreachable!(),
@@ -128,12 +141,22 @@ fn find_intersection(grid_origin: (usize, usize), angle_num: usize) -> Intersect
 fn find_horizontal_intersection(
     grid_origin: (usize, usize),
     angle_num: usize,
+    dir: Direction,
 ) -> Option<Intersection> {
     // Intersections with horizontal grid-lines, y-direction
-    // Origin is  middle of block
-    let py = (grid_origin.0 * WALL_SIZE) + (WALL_SIZE / 2);
-    let px = (grid_origin.1 * WALL_SIZE) + (WALL_SIZE / 2);
-    let angle: f32 = ANGLE_DIFF_DEGREES * angle_num as f32;
+    // Origin is  middle of block\
+    use Direction::*;
+    let py = match dir {
+        North => grid_origin.0 * WALL_SIZE,
+        South => grid_origin.0 * WALL_SIZE + WALL_SIZE,
+        _ => (grid_origin.0 * WALL_SIZE) + (WALL_SIZE / 2),
+    };
+    let px = match dir {
+        East => (grid_origin.1 * WALL_SIZE) + WALL_SIZE,
+        West => (grid_origin.1 * WALL_SIZE),
+        _ => (grid_origin.1 * WALL_SIZE) + (WALL_SIZE / 2),
+    };
+    let angle: f64 = ANGLE_DIFF_DEGREES * angle_num as f64;
 
     let mut ay = if angle > 180.0 {
         grid_origin.0 * WALL_SIZE + WALL_SIZE
@@ -141,16 +164,19 @@ fn find_horizontal_intersection(
         grid_origin.0 * WALL_SIZE - 1
     };
 
-    if tan(angle_num) == 0.0 {
+    if angle == 0.0 || angle == 180.0 {
         return None;
     }
 
-    let ax_neg = (px as f32 + ((py as i32 - ay as i32) as f32 / tan(angle_num))).floor();
+    let ax_neg = (px as f64
+        + ((py as i32 - ay as i32) as f64 / f64::tan(angle / 180.0 * std::f64::consts::PI)))
+    .floor();
     if ax_neg < 0.0 {
         return None;
     }
     let mut ax: usize = ax_neg as usize;
-    let xa: i32 = (WALL_SIZE as f32 / tan(angle_num)).floor() as i32;
+    let xa: i32 =
+        (WALL_SIZE as f64 / f64::tan(angle / 180.0 * std::f64::consts::PI)).floor() as i32;
 
     while ay >= 0 && ay < 160 && ax >= 0 && ax < 160 {
         let gridx = ax / WALL_SIZE;
@@ -182,12 +208,22 @@ fn find_horizontal_intersection(
 fn find_vertical_intersection(
     grid_origin: (usize, usize),
     angle_num: usize,
+    dir: Direction,
 ) -> Option<Intersection> {
     // Intersections with vertical grid-lines, x-direction
     // Origin is  middle of block
-    let py = (grid_origin.0 * WALL_SIZE) + (WALL_SIZE / 2);
-    let px = (grid_origin.1 * WALL_SIZE) + (WALL_SIZE / 2);
-    let angle: f32 = ANGLE_DIFF_DEGREES * angle_num as f32;
+    use Direction::*;
+    let py = match dir {
+        North => grid_origin.0 * WALL_SIZE,
+        South => grid_origin.0 * WALL_SIZE + WALL_SIZE,
+        _ => (grid_origin.0 * WALL_SIZE) + (WALL_SIZE / 2),
+    };
+    let px = match dir {
+        East => (grid_origin.1 * WALL_SIZE) + WALL_SIZE,
+        West => (grid_origin.1 * WALL_SIZE),
+        _ => (grid_origin.1 * WALL_SIZE) + (WALL_SIZE / 2),
+    };
+    let angle: f64 = ANGLE_DIFF_DEGREES * angle_num as f64;
 
     let mut ax = if angle >= 90.0 && angle <= 270.0 {
         grid_origin.1 * WALL_SIZE - 1
@@ -195,17 +231,19 @@ fn find_vertical_intersection(
         grid_origin.1 * WALL_SIZE + WALL_SIZE
     };
 
-    if angle_num == 480 || angle_num == 1440 {
+    if angle == 90.0 || angle == 270.0 {
         return None; // divergent tan
     }
 
-    let ay_neg = (py as f32 + ((px as i32 - ax as i32) as f32 * tan(angle_num))).floor();
+    let ay_neg = (py as f64
+        + ((px as i32 - ax as i32) as f64 * f64::tan(angle / 180.0 * std::f64::consts::PI)))
+    .floor();
     if ay_neg < 0.0 {
         return None;
     }
 
     let mut ay = ay_neg as usize;
-    let ya = (WALL_SIZE as f32 * tan(angle_num)).floor() as i32;
+    let ya = (WALL_SIZE as f64 * f64::tan(angle / 180.0 * std::f64::consts::PI)).floor() as i32;
 
     while ax >= 0 && ax < 160 && ay >= 0 && ay < 160 {
         let gridx = ax / WALL_SIZE;
